@@ -24,6 +24,8 @@ else
     dconf reset /org/gnome/desktop/wm/preferences/button-layout
     dconf reset /org/gnome/desktop/interface/gtk-theme
     dconf reset /org/gnome/desktop/interface/icon-theme
+    dconf reset /org/gnome/desktop/interface/cursor-theme
+    rm -f "$HOME/.icons/default/index.theme"
     dconf reset /org/gnome/desktop/background/picture-uri
     dconf reset /org/gnome/desktop/background/picture-uri-dark
     dconf reset /org/gnome/shell/extensions/user-theme/name

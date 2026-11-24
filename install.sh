@@ -88,6 +88,15 @@ if $APPLY_THEME; then
     else
         echo "Note: WhiteSur icon theme not found. Install https://github.com/vinceliuice/WhiteSur-icon-theme for macOS icons."
     fi
+
+    if [[ -d "$HOME/.local/share/icons/WhiteSur-cursors" || -d "$HOME/.icons/WhiteSur-cursors" || -d "/usr/share/icons/WhiteSur-cursors" ]]; then
+        echo "==> Applying WhiteSur-cursors macOS cursor theme"
+        gsettings set org.gnome.desktop.interface cursor-theme 'WhiteSur-cursors'
+        mkdir -p "$HOME/.icons/default"
+        printf '[Icon Theme]\nInherits=WhiteSur-cursors\n' > "$HOME/.icons/default/index.theme"
+    else
+        echo "Note: WhiteSur-cursors not found. Install https://github.com/vinceliuice/WhiteSur-cursors for macOS cursors."
+    fi
 fi
 
 if $APPLY_TERMINAL; then

@@ -37,7 +37,7 @@ Focused, razor-sharp icon zoom that rises cleanly above the frosted glass top bo
   - Bypasses both `St.ScrollView` C-level viewport clipping and `DashSlideContainer.vfunc_allocate`'s post-allocation `set_clip()`, allowing zoomed icons to rise naturally above the Dock's top border.
   - Keeps the frosted glass shelf rock-solid (`scale_x = 1.0`, zero jitter) and running dots anchored at the bottom baseline.
 - **macOS-Style Top Bar & Quick App Launchers**
-  - Replaces the GNOME "Activities" text label with a clean Apple menu icon, hides the redundant app-menu text, and moves the clock/date widget to the right corner.
+  - Replaces the GNOME "Activities" text label with a clean Apple menu icon, hides the redundant app-menu text, and keeps the clock/date cleanly centered in the top bar.
   - Adds top-bar quick launchers (Terminal, Chrome, Files) with single-click focus/launch, multi-window switcher dropdowns, and live Braille spinner status badges parsed from window titles.
 - **Desktop Widgets**
   - Clean frosted-glass monthly Calendar card, live Weather card (via `wttr.in`), and Photo widget rendered on the desktop background layer.
@@ -92,6 +92,12 @@ git clone https://github.com/vinceliuice/WhiteSur-gtk-theme.git --depth=1
 # WhiteSur Icon Theme
 git clone https://github.com/vinceliuice/WhiteSur-icon-theme.git --depth=1
 ./WhiteSur-icon-theme/install.sh
+
+# WhiteSur macOS Cursor Theme
+git clone https://github.com/vinceliuice/WhiteSur-cursors.git --depth=1
+mkdir -p ~/.local/share/icons ~/.icons
+cp -r WhiteSur-cursors/dist ~/.local/share/icons/WhiteSur-cursors
+ln -sfn ~/.local/share/icons/WhiteSur-cursors ~/.icons/WhiteSur-cursors
 ```
 
 > On non-Ubuntu GNOME distros, also install and enable **Dash to Dock** (`dash-to-dock@micxgx.gmail.com`) and **User Themes** (`user-theme@gnome-shell-extensions.gcampax.github.com`).

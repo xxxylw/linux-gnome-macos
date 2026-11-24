@@ -700,7 +700,7 @@ class DockMagnifier {
 
 class PanelIcons {
     enable() {
-        const { activities, appMenu, dateMenu } = Main.panel.statusArea;
+        const { activities, appMenu } = Main.panel.statusArea;
         this._activities = activities;
         this._activitiesLabel = activities._label;
         this._appMenu = appMenu;
@@ -728,12 +728,6 @@ class PanelIcons {
             this._quickButtons.push(btn);
         }
 
-        this._date = dateMenu.container;
-        this._dateParent = this._date.get_parent();
-        this._dateIndex = this._dateParent.get_children().indexOf(this._date);
-        this._dateParent.remove_child(this._date);
-        Main.panel._rightBox.add_child(this._date);
-
         this._cards = new DesktopCards();
         Main.layoutManager._backgroundGroup.add_child(this._cards.actor);
 
@@ -749,10 +743,6 @@ class PanelIcons {
             for (const btn of this._quickButtons)
                 btn.destroy();
         }
-        if (this._date && this._date.get_parent() === Main.panel._rightBox) {
-            Main.panel._rightBox.remove_child(this._date);
-            this._dateParent.insert_child_at_index(this._date, this._dateIndex);
-        }
         if (this._icon)
             this._icon.destroy();
         if (this._activitiesLabel)
@@ -764,7 +754,6 @@ class PanelIcons {
         this._dockMagnifier = null;
         this._cards = null;
         this._quickButtons = null;
-        this._date = null;
         this._icon = null;
         this._appMenu = null;
     }
