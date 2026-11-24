@@ -91,11 +91,8 @@ if $APPLY_THEME; then
 fi
 
 if $APPLY_TERMINAL; then
-    echo "==> Applying macOS Pro GNOME Terminal profile & GTK 3 rounded window styling"
+    echo "==> Applying macOS Pro GNOME Terminal profile"
     dconf load /org/gnome/terminal/legacy/ < "$REPO_DIR/configs/terminal-macos-pro.dconf"
-    mkdir -p "$HOME/.config/gtk-3.0"
-    [[ -f "$HOME/.config/gtk-3.0/gtk.css" ]] && cp -f "$HOME/.config/gtk-3.0/gtk.css" "$BACKUP_DIR/gtk-3.0.css" || true
-    cp -f "$REPO_DIR/configs/gtk3-terminal.css" "$HOME/.config/gtk-3.0/gtk.css"
 fi
 
 echo "==> Enabling GNOME Shell extensions"
