@@ -139,6 +139,7 @@ linux-gnome-macos/
 ├── restore.sh                                   # One-click rollback / uninstaller
 ├── configs/
 │   ├── dock.dconf                               # Dash-to-Dock / Ubuntu Dock geometry keys
+│   ├── gtk3-terminal.css                        # All-4-rounded-corners & slim macOS titlebar CSS
 │   └── terminal-macos-pro.dconf                 # GNOME Terminal translucent dark profile
 ├── extensions/
 │   └── panel-icons@local/

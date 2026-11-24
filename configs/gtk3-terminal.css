@@ -1,0 +1,166 @@
+/* macOS Terminal styling for GNOME Terminal (GTK 3)
+ * - Seamless 4 rounded corners (10px) via notebook bottom-arc frame so VteTerminal never overhangs
+ * - Crisp 1px outer hairline border & macOS elevation shadow for multi-window clarity
+ * - Slim 28px macOS titlebar with quiet auxiliary buttons & clean path title
+ * - Seamless macOS multi-tab bar; preserves user's transparent #1E1E1E background & palette
+ */
+
+VteTerminal,
+TerminalScreen,
+vte-terminal {
+    padding: 10px 14px 2px 14px;
+    -VteTerminal-inner-border: 10px 14px 2px 14px;
+}
+
+terminal-window,
+terminal-window.background,
+terminal-window.background.csd {
+    border-radius: 10px;
+    background-color: transparent;
+}
+
+terminal-window decoration,
+terminal-window.csd decoration {
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(0, 0, 0, 0.42);
+}
+
+terminal-window decoration:backdrop,
+terminal-window.csd decoration:backdrop {
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.30), 0 0 0 1px rgba(0, 0, 0, 0.30);
+}
+
+/* Bottom rounded cap matching macOS Pro 90% opacity #1E1E1E so VteTerminal stops above the corner arc */
+terminal-window notebook {
+    background-color: rgba(30, 30, 30, 0.90);
+    border-radius: 0 0 10px 10px;
+    padding-bottom: 10px;
+}
+
+terminal-window.maximized,
+terminal-window.maximized decoration,
+terminal-window.maximized notebook,
+terminal-window.tiled,
+terminal-window.tiled decoration,
+terminal-window.tiled notebook {
+    border-radius: 0;
+    border: none;
+    padding-bottom: 0;
+}
+
+/* Slim macOS-style titlebar */
+terminal-window headerbar,
+terminal-window.csd headerbar {
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 10px 10px 0 0;
+    background-image: linear-gradient(to bottom, #373739, #2b2b2d);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.55);
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.10);
+    color: #e2e2e7;
+}
+
+terminal-window headerbar:backdrop,
+terminal-window.csd headerbar:backdrop {
+    background-image: none;
+    background-color: #252527;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.42);
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.05);
+    color: #8e8e93;
+}
+
+terminal-window.maximized headerbar,
+terminal-window.tiled headerbar {
+    border-radius: 0;
+}
+
+terminal-window headerbar .title {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.15px;
+    padding: 0 8px;
+}
+
+/* Keep GNOME Terminal's extra header buttons subtle like macOS Terminal */
+terminal-window headerbar button.image-button,
+terminal-window headerbar button.text-button,
+terminal-window headerbar button.toggle {
+    min-height: 20px;
+    min-width: 20px;
+    padding: 1px 4px;
+    margin: 2px 1px;
+    opacity: 0.28;
+    box-shadow: none;
+    background: transparent;
+    border-color: transparent;
+    transition: opacity 140ms ease, background-color 140ms ease;
+}
+
+terminal-window headerbar button.image-button:hover,
+terminal-window headerbar button.text-button:hover,
+terminal-window headerbar button.toggle:hover {
+    opacity: 0.92;
+    background-color: rgba(255, 255, 255, 0.10);
+    border-radius: 6px;
+}
+
+/* Keep macOS traffic-light window controls crisp */
+terminal-window headerbar button.titlebutton {
+    opacity: 1.0;
+    min-height: 14px;
+    min-width: 14px;
+    margin: 0 3px;
+}
+
+terminal-window headerbar:backdrop button.titlebutton {
+    opacity: 0.55;
+}
+
+/* Sleek macOS multi-tab bar */
+terminal-window notebook > header {
+    background-color: #222224;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.55);
+    padding: 0;
+}
+
+terminal-window notebook > header tabs {
+    margin: 0;
+    padding: 0;
+}
+
+terminal-window notebook > header tab {
+    min-height: 25px;
+    padding: 2px 12px;
+    color: #8e8e93;
+    font-size: 12px;
+    font-weight: 500;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    background-color: transparent;
+    box-shadow: none;
+}
+
+terminal-window notebook > header tab:hover {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: #c8c8ce;
+}
+
+terminal-window notebook > header tab:checked {
+    background-color: #1e1e1e;
+    color: #f2f2f7;
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.09);
+}
+
+terminal-window notebook > header tab button {
+    min-width: 16px;
+    min-height: 16px;
+    padding: 0;
+    opacity: 0.45;
+}
+
+terminal-window notebook > header tab button:hover {
+    opacity: 0.95;
+    background-color: rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+}

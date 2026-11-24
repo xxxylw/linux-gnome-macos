@@ -18,6 +18,11 @@ if [[ -d "$BACKUP_DIR" ]]; then
     [[ -s "$BACKUP_DIR/wm-preferences.dconf" ]] && dconf load /org/gnome/desktop/wm/preferences/ < "$BACKUP_DIR/wm-preferences.dconf" || true
     [[ -s "$BACKUP_DIR/background.dconf" ]] && dconf load /org/gnome/desktop/background/ < "$BACKUP_DIR/background.dconf" || true
     [[ -s "$BACKUP_DIR/terminal.dconf" ]] && dconf load /org/gnome/terminal/legacy/ < "$BACKUP_DIR/terminal.dconf" || true
+    if [[ -f "$BACKUP_DIR/gtk-3.0.css" ]]; then
+        cp -f "$BACKUP_DIR/gtk-3.0.css" "$HOME/.config/gtk-3.0/gtk.css"
+    else
+        rm -f "$HOME/.config/gtk-3.0/gtk.css"
+    fi
 else
     echo "==> No backup found; resetting modified keys to GNOME defaults"
     dconf reset -f /org/gnome/shell/extensions/dash-to-dock/
