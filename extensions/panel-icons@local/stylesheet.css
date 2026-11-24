@@ -1,0 +1,143 @@
+.desktop-cards { spacing: 12px; }
+.desktop-card-row { spacing: 12px; }
+.desktop-card {
+    border-radius: 20px;
+    padding: 13px 15px;
+    width: 144px;
+    height: 145px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 6px 20px rgba(14, 21, 36, 0.16);
+}
+.desktop-calendar {
+    background-color: rgba(251, 249, 248, 0.96);
+    color: #30232a;
+    spacing: 4px;
+}
+.desktop-month { color: #aa404c; font-size: 14px; font-weight: 700; }
+.desktop-calendar-days { spacing: 0; }
+.desktop-day { width: 20px; height: 17px; text-align: center; font-size: 10px; }
+.desktop-weekday { color: #5a4c53; font-weight: 700; }
+.desktop-today { color: white; background-color: #b24050; border-radius: 9px; font-weight: 700; }
+.desktop-weather {
+    background-gradient-direction: vertical;
+    background-gradient-start: #173f65;
+    background-gradient-end: #3e6d8d;
+    color: #f5f9ff;
+}
+.desktop-card-heading { font-size: 13px; font-weight: 700; }
+.desktop-temperature { padding-top: 4px; padding-bottom: 12px; font-size: 37px; }
+.desktop-weather-detail { font-size: 11px; }
+.desktop-photo {
+    height: 135px;
+    border-radius: 20px;
+    background-size: cover;
+    background-position: center;
+    background-color: #254455;
+    color: white;
+}
+.desktop-photo-caption {
+    background-color: rgba(15, 21, 30, 0.79);
+    padding: 7px 15px;
+    border-radius: 0 0 20px 20px;
+}
+.desktop-photo-credit { font-size: 10px; color: #dee7f0; }
+
+.panel-quick-apps {
+    spacing: 2px;
+    padding-left: 2px;
+}
+.panel-quick-app {
+    padding: 0 7px;
+    border-radius: 6px;
+}
+.panel-quick-app:hover {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+.panel-quick-app-box {
+    spacing: 4px;
+}
+.panel-quick-status {
+    font-size: 13px;
+    color: #f5f9ff;
+}
+
+/* macOS Dock geometry & frosted glass styling */
+#dashtodockContainer.bottom.macos-dock #dash {
+    margin: 0 !important;
+    padding: 0 6px 5px 6px !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash #dashtodockDashContainer {
+    padding: 0 5px !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dashtodockDashScrollview {
+    -st-hfade-offset: 0px !important;
+    -st-vfade-offset: 0px !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash .dash-background {
+    margin: 0 !important;
+    padding: 4px 6px 6px 6px !important;
+    border-radius: 17px !important;
+    background-color: rgba(242, 244, 248, 0.46) !important;
+    border: 1px solid rgba(255, 255, 255, 0.45) !important;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22) !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash .dash-item-container {
+    margin: 0 2px !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash .dash-item-container .app-well-app,
+#dashtodockContainer.bottom.macos-dock #dash .show-apps {
+    padding: 4px 1px 6px 1px !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash .dash-item-container .overview-icon,
+#dashtodockContainer.bottom.macos-dock #dash .show-apps .overview-icon {
+    padding: 2px !important;
+    border-radius: 12px !important;
+    background-color: transparent !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash .app-well-app:hover .overview-icon,
+#dashtodockContainer.bottom.macos-dock #dash .app-well-app:focus .overview-icon,
+#dashtodockContainer.bottom.macos-dock #dash .show-apps:hover .overview-icon,
+#dashtodockContainer.bottom.macos-dock #dash .show-apps:focus .overview-icon {
+    background-color: transparent !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash .app-well-app:active .overview-icon,
+#dashtodockContainer.bottom.macos-dock #dash .show-apps:active .overview-icon {
+    background-color: rgba(0, 0, 0, 0.14) !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash .app-well-app-running-dot {
+    width: 4px !important;
+    height: 4px !important;
+    border-radius: 999px !important;
+    margin-bottom: 1px !important;
+    background-color: rgba(0, 0, 0, 0.68) !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash StWidget.focused .app-well-app-running-dot {
+    background-color: rgba(0, 0, 0, 0.88) !important;
+}
+
+#dashtodockContainer.bottom.macos-dock #dash .dash-separator {
+    width: 1px !important;
+    margin: 8px 6px 10px 6px !important;
+    background-color: rgba(0, 0, 0, 0.18) !important;
+}
+
+#dashtodockContainer.bottom.macos-dock:overview #dash .dash-background {
+    background-color: rgba(255, 255, 255, 0.16) !important;
+    border: 1px solid rgba(255, 255, 255, 0.20) !important;
+}
+
+#dashtodockContainer.bottom.macos-dock:overview #dash .app-well-app-running-dot {
+    background-color: rgba(255, 255, 255, 0.85) !important;
+}

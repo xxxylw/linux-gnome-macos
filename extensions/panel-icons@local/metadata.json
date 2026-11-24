@@ -1,0 +1,6 @@
+{
+  "uuid": "panel-icons@local",
+  "name": "Linux GNOME macOS Polish",
+  "description": "macOS-style GNOME Shell polish: Apple menu button, top-bar quick app launchers, desktop calendar/weather/photo widgets, and authentic unclipped Dock magnification.",
+  "shell-version": ["40", "41", "42", "43", "44"]
+}

@@ -1,0 +1,33 @@
+# macOS Pro translucent dark profile for GNOME Terminal
+# Load with: dconf load /org/gnome/terminal/legacy/ < configs/terminal-macos-pro.dconf
+[/]
+default-show-menubar=false
+headerbar=@mb true
+theme-variant='dark'
+
+[profiles:]
+default='f70b9a08-db9a-4a98-aad4-f7e8e21da4a0'
+list=['f70b9a08-db9a-4a98-aad4-f7e8e21da4a0']
+
+[profiles:/:f70b9a08-db9a-4a98-aad4-f7e8e21da4a0]
+background-color='#1E1E1E'
+background-transparency-percent=10
+cursor-background-color='#98989D'
+cursor-blink-mode='off'
+cursor-colors-set=true
+cursor-foreground-color='#1E1E1E'
+cursor-shape='block'
+default-size-columns=90
+default-size-rows=26
+font='Ubuntu Mono 13'
+foreground-color='#F2F2F2'
+highlight-background-color='#3A5F8A'
+highlight-colors-set=true
+highlight-foreground-color='#FFFFFF'
+palette=['#1E1E1E', '#FF5F56', '#27C93F', '#FFBD2E', '#579DFF', '#C678DD', '#56B6C2', '#DCDFE4', '#636D83', '#FF7B72', '#56D364', '#E3B341', '#79C0FF', '#D2A8FF', '#76E3EA', '#FFFFFF']
+scrollbar-policy='never'
+use-system-font=false
+use-theme-colors=false
+use-theme-transparency=false
+use-transparent-background=true
+visible-name='macOS Pro'
