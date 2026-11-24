@@ -12,16 +12,20 @@ vte-terminal {
     -VteTerminal-inner-border: 10px 14px 2px 14px;
 }
 
+terminal-window notebook {
+    margin-bottom: 10px;
+}
+
 terminal-window,
 terminal-window.background,
 terminal-window.background.csd {
-    border-radius: 10px;
-    background-color: transparent;
+    border-radius: 12px;
+    background-color: rgba(30, 30, 30, 0.90);
 }
 
 terminal-window decoration,
 terminal-window.csd decoration {
-    border-radius: 10px;
+    border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     box-shadow: 0 18px 42px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(0, 0, 0, 0.42);
 }
@@ -32,22 +36,17 @@ terminal-window.csd decoration:backdrop {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.30), 0 0 0 1px rgba(0, 0, 0, 0.30);
 }
 
-/* Bottom rounded cap matching macOS Pro 90% opacity #1E1E1E so VteTerminal stops above the corner arc */
-terminal-window notebook {
-    background-color: rgba(30, 30, 30, 0.90);
-    border-radius: 0 0 10px 10px;
-    padding-bottom: 10px;
-}
-
 terminal-window.maximized,
 terminal-window.maximized decoration,
-terminal-window.maximized notebook,
 terminal-window.tiled,
-terminal-window.tiled decoration,
-terminal-window.tiled notebook {
+terminal-window.tiled decoration {
     border-radius: 0;
     border: none;
-    padding-bottom: 0;
+}
+
+terminal-window.maximized notebook,
+terminal-window.tiled notebook {
+    margin-bottom: 0;
 }
 
 /* Slim macOS-style titlebar */
