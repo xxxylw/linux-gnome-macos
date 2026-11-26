@@ -816,7 +816,8 @@ class DockMagnifier {
                     continue;
                 }
                 bg = state.dash._background;
-                if (!bg || !bg.visible) {
+                const slider = dock._slider;
+                if (!bg || !bg.visible || (slider && slider.slideX < 0.99)) {
                     if (state.hoverActive) {
                         state.hoverActive = false;
                         needAnim = true;
