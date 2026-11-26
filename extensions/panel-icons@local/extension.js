@@ -334,6 +334,10 @@ class DesktopCards {
             Main.overview.disconnect(this._overviewShowSignal);
             this._overviewShowSignal = 0;
         }
+        if (this._overviewHidingSignal) {
+            Main.overview.disconnect(this._overviewHidingSignal);
+            this._overviewHidingSignal = 0;
+        }
         if (this._overviewHideSignal) {
             Main.overview.disconnect(this._overviewHideSignal);
             this._overviewHideSignal = 0;
@@ -551,6 +555,7 @@ class DockMagnifier {
         this._animTimeoutId = 0;
 
         this._overviewShowSignal = Main.overview.connect('showing', () => this._resetImmediate());
+        this._overviewHidingSignal = Main.overview.connect('hiding', () => this._resetImmediate());
         this._overviewHideSignal = Main.overview.connect('hidden', () => this._scheduleSync());
         this._monitorsSignal = Main.layoutManager.connect('monitors-changed', () => {
             this._resetImmediate();
@@ -1079,6 +1084,10 @@ class DockMagnifier {
         if (this._overviewShowSignal) {
             Main.overview.disconnect(this._overviewShowSignal);
             this._overviewShowSignal = 0;
+        }
+        if (this._overviewHidingSignal) {
+            Main.overview.disconnect(this._overviewHidingSignal);
+            this._overviewHidingSignal = 0;
         }
         if (this._overviewHideSignal) {
             Main.overview.disconnect(this._overviewHideSignal);
