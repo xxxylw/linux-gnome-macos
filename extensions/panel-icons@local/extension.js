@@ -726,7 +726,7 @@ class DockMagnifier {
                     items.push({ actor: child, isIcon });
             }
             if (dash._showAppsIcon && dash._showAppsIcon.visible && dash._showAppsIcon.mapped)
-                items.push({ actor: dash._showAppsIcon, isIcon: true });
+                items.push({ actor: dash._showAppsIcon, isIcon: true, isShowApps: true });
         } catch (_e) {
             return [];
         }
@@ -742,7 +742,7 @@ class DockMagnifier {
         return null;
     }
 
-    _getOrCreateMirror(state, visual) {
+    _getOrCreateMirror(state, visual, isShowApps) {
         const stIcon = visual && visual.child;
         if (!stIcon || !(stIcon instanceof St.Icon))
             return null;
@@ -751,11 +751,13 @@ class DockMagnifier {
         const hiResSize = Math.round(baseSize * DOCK_MAX_SCALE);
         let mirror = state.mirrors.get(visual);
         if (mirror) {
-            // Keep icon content in sync if the app icon changed
-            if (stIcon.gicon && mirror.gicon !== stIcon.gicon)
-                mirror.gicon = stIcon.gicon;
-            else if (!stIcon.gicon && stIcon.icon_name && mirror.icon_name !== stIcon.icon_name)
-                mirror.icon_name = stIcon.icon_name;
+            const iconActor = isShowApps ? mirror.child : mirror;
+            if (iconActor instanceof St.Icon) {
+                if (stIcon.gicon && iconActor.gicon !== stIcon.gicon)
+                    iconActor.gicon = stIcon.gicon;
+                else if (!stIcon.gicon && stIcon.icon_name && iconActor.icon_name !== stIcon.icon_name)
+                    iconActor.icon_name = stIcon.icon_name;
+            }
             return mirror;
         }
 
@@ -765,6 +767,8 @@ class DockMagnifier {
             width: baseSize,
             height: baseSize,
         };
+        if (stIcon.style_class)
+            props.style_class = stIcon.style_class;
         if (stIcon.gicon)
             props.gicon = stIcon.gicon;
         else if (stIcon.icon_name)
@@ -772,7 +776,22 @@ class DockMagnifier {
         else
             return null;
 
-        mirror = new St.Icon(props);
+        const iconActor = new St.Icon(props);
+        if (isShowApps) {
+            // Preserve WhiteSur's `.show-apps .show-apps-icon` CSS selector (view-app-grid.svg)
+            if (!iconActor.has_style_class_name('show-apps-icon'))
+                iconActor.add_style_class_name('show-apps-icon');
+            mirror = new St.Bin({
+                style_class: 'show-apps',
+                reactive: false,
+                width: baseSize,
+                height: baseSize,
+                child: iconActor,
+            });
+        } else {
+            mirror = iconActor;
+        }
+
         mirror.set_pivot_point(0.5, 1.0);
         state.overlay.add_child(mirror);
         state.mirrors.set(visual, mirror);
@@ -786,6 +805,24 @@ class DockMagnifier {
             return px >= m.x && px < m.x + m.width && py >= m.y && py < m.y + m.height;
         }
         return true;
+    }
+
+    _isPointerInDockZone(state, px, py) {
+        const dock = state.dock;
+        const bg = state.dash._background;
+        const slider = dock._slider;
+        if (Main.overview.visible || !dock.mapped || !bg || !bg.visible || (slider && slider.slideX < 0.99))
+            return false;
+        if (!this._pointerInDockMonitor(dock, px, py))
+            return false;
+        const [bx, by] = bg.get_transformed_position();
+        const [bw, bh] = bg.get_transformed_size();
+        if (bw <= 0 || bh <= 0)
+            return false;
+        const topPad = state.hoverActive ? 34 : 6;
+        const sidePad = state.hoverActive ? 20 : 6;
+        return px >= bx - sidePad && px <= bx + bw + sidePad &&
+               py >= by - topPad && py <= by + bh + 10;
     }
 
     _onStageEvent(event) {
@@ -826,34 +863,7 @@ class DockMagnifier {
                     this._detachDock(dock, true);
                     continue;
                 }
-                const bg = state.dash._background;
-                const slider = dock._slider;
-                if (!dock.mapped || !bg || !bg.visible || (slider && slider.slideX < 0.99)) {
-                    if (state.hoverActive) {
-                        state.hoverActive = false;
-                        needAnim = true;
-                    }
-                    continue;
-                }
-                if (!this._pointerInDockMonitor(dock, px, py)) {
-                    if (state.hoverActive) {
-                        state.hoverActive = false;
-                        needAnim = true;
-                    }
-                    continue;
-                }
-
-                const [bx, by] = bg.get_transformed_position();
-                const [bw, bh] = bg.get_transformed_size();
-                if (bw <= 0 || bh <= 0)
-                    continue;
-
-                const topPad = state.hoverActive ? 34 : 6;
-                const sidePad = state.hoverActive ? 20 : 6;
-                const inZone = px >= bx - sidePad && px <= bx + bw + sidePad &&
-                               py >= by - topPad && py <= by + bh + 10;
-
-                if (inZone) {
+                if (this._isPointerInDockZone(state, px, py)) {
                     state.hoverActive = true;
                     state.pointerX = px;
                     needAnim = true;
@@ -879,6 +889,16 @@ class DockMagnifier {
     }
 
     _stepStateAnim(state) {
+        // On X11, global.stage stops receiving MOTION events once the pointer moves onto
+        // an application window; poll global.get_pointer() while active so icons always shrink back.
+        if (state.hoverActive) {
+            const [px, py] = global.get_pointer();
+            if (this._isPointerInDockZone(state, px, py))
+                state.pointerX = px;
+            else
+                state.hoverActive = false;
+        }
+
         const entries = this._getAllDockChildren(state);
         if (entries.length === 0) {
             this._clearOverlay(state);
@@ -959,7 +979,7 @@ class DockMagnifier {
             if (!visual)
                 continue;
 
-            const mirror = this._getOrCreateMirror(state, visual);
+            const mirror = this._getOrCreateMirror(state, visual, entry.isShowApps);
             if (!mirror)
                 continue;
 
@@ -971,8 +991,11 @@ class DockMagnifier {
 
             const [vx, vy] = visual.get_transformed_position();
             const [vw, vh] = visual.get_transformed_size();
-            if (vw > 0 && vh > 0)
+            if (vw > 0 && vh > 0) {
                 mirror.set_size(vw, vh);
+                if (mirror instanceof St.Bin && mirror.child)
+                    mirror.child.set_size(vw, vh);
+            }
             mirror.set_position(Math.round(vx + tx), Math.round(vy));
             mirror.set_pivot_point(0.5, 1.0);
             mirror.scale_x = scale;
