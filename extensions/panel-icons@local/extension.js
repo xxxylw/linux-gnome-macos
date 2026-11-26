@@ -1,4 +1,4 @@
-const { Clutter, Gio, GLib, GObject, Shell, St } = imports.gi;
+const { Clutter, Gio, GLib, GObject, Meta, Shell, St } = imports.gi;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
@@ -77,8 +77,34 @@ class DesktopCards {
         this.actor.add_child(row);
         this.actor.add_child(photo);
         this._weatherCancellation = new Gio.Cancellable();
-        this._reposition();
-        this._layoutSignal = Main.layoutManager.connect('monitors-changed', () => this._reposition());
+        this._repositionIdleId = 0;
+        this._visibilityIdleId = 0;
+        this._focusedWin = null;
+        this._focusedWinSignals = [];
+        this._displaySignals = [];
+        this._wmSignals = [];
+
+        this._layoutSignal = Main.layoutManager.connect('monitors-changed', () => {
+            this._reposition();
+            this._scheduleReposition();
+        });
+        this._panelHeightSignal = Main.layoutManager.panelBox
+            ? Main.layoutManager.panelBox.connect('notify::height', () => this._reposition())
+            : 0;
+        this._overviewShowSignal = Main.overview.connect('showing', () => this._updateVisibility());
+        this._overviewHideSignal = Main.overview.connect('hidden', () => this._scheduleVisibilityUpdate());
+
+        const onWindowEvent = () => this._scheduleVisibilityUpdate();
+        for (const sig of ['restacked', 'grab-op-end'])
+            this._displaySignals.push(global.display.connect(sig, onWindowEvent));
+        this._displaySignals.push(global.display.connect('notify::focus-window', () => {
+            this._watchFocusedWindow();
+            this._scheduleVisibilityUpdate();
+        }));
+        for (const sig of ['map', 'destroy', 'minimize', 'unminimize', 'size-changed', 'switch-workspace'])
+            this._wmSignals.push(global.window_manager.connect(sig, onWindowEvent));
+
+        this._watchFocusedWindow();
         this._setCalendar();
         this._requestWeather();
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 60, () => {
@@ -89,10 +115,130 @@ class DesktopCards {
         });
     }
 
+    attach() {
+        Main.layoutManager._backgroundGroup.add_child(this.actor);
+        this._reposition();
+        this._scheduleReposition();
+    }
+
+    _scheduleReposition() {
+        if (this._repositionIdleId)
+            return;
+        this._repositionIdleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._repositionIdleId = 0;
+            this._reposition();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _scheduleVisibilityUpdate() {
+        if (this._visibilityIdleId)
+            return;
+        this._visibilityIdleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._visibilityIdleId = 0;
+            this._updateVisibility();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _clearFocusedWindowWatch() {
+        if (this._focusedWin) {
+            for (const sig of this._focusedWinSignals) {
+                try { this._focusedWin.disconnect(sig); } catch (_e) {}
+            }
+        }
+        this._focusedWin = null;
+        this._focusedWinSignals = [];
+    }
+
+    _watchFocusedWindow() {
+        this._clearFocusedWindowWatch();
+        const win = global.display.focus_window;
+        if (!win)
+            return;
+        this._focusedWin = win;
+        this._focusedWinSignals.push(
+            win.connect('position-changed', () => this._scheduleVisibilityUpdate()),
+            win.connect('size-changed', () => this._scheduleVisibilityUpdate()),
+            win.connect('unmanaged', () => {
+                this._clearFocusedWindowWatch();
+                this._scheduleVisibilityUpdate();
+            })
+        );
+    }
+
+    _getCardBounds(monitor) {
+        const panelHeight = Main.layoutManager.panelBox
+            ? Math.round(Main.layoutManager.panelBox.height)
+            : 27;
+        const marginX = 22;
+        const marginY = Math.max(panelHeight + 18, 47);
+        const w = Math.max(Math.round(this.actor.width || 0), 364);
+        const h = Math.max(Math.round(this.actor.height || 0), 292);
+        return {
+            x: monitor.x + marginX,
+            y: monitor.y + marginY,
+            w,
+            h,
+        };
+    }
+
     _reposition() {
         const monitor = Main.layoutManager.primaryMonitor;
-        if (monitor)
-            this.actor.set_position(monitor.x + 22, monitor.y + 47);
+        if (!monitor) {
+            this.actor.hide();
+            return;
+        }
+        const bounds = this._getCardBounds(monitor);
+        this.actor.set_position(bounds.x, bounds.y);
+        const parent = this.actor.get_parent();
+        if (parent)
+            parent.set_child_above_sibling(this.actor, null);
+        this._updateVisibility();
+    }
+
+    _updateVisibility() {
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor || Main.overview.visible) {
+            this.actor.hide();
+            return;
+        }
+        const bounds = this._getCardBounds(monitor);
+        if (bounds.w + 44 > monitor.width || bounds.h + 64 > monitor.height) {
+            this.actor.hide();
+            return;
+        }
+
+        const pad = 12;
+        const cx1 = bounds.x - pad;
+        const cy1 = bounds.y - pad;
+        const cx2 = bounds.x + bounds.w + pad;
+        const cy2 = bounds.y + bounds.h + pad;
+
+        let obscured = false;
+        const workspace = global.workspace_manager.get_active_workspace();
+        const windows = workspace ? workspace.list_windows() : [];
+        for (const win of windows) {
+            if (!win || win.minimized || !win.showing_on_its_workspace())
+                continue;
+            const type = win.window_type;
+            if (type === Meta.WindowType.DESKTOP || type === Meta.WindowType.DOCK)
+                continue;
+            const rect = win.get_frame_rect();
+            if (!rect || rect.width <= 0 || rect.height <= 0)
+                continue;
+            const overlaps = rect.x < cx2 && rect.x + rect.width > cx1 &&
+                             rect.y < cy2 && rect.y + rect.height > cy1;
+            if (overlaps) {
+                obscured = true;
+                break;
+            }
+        }
+
+        if (obscured)
+            this.actor.hide();
+        else
+            this.actor.show();
     }
 
     _setCalendar() {
@@ -148,9 +294,44 @@ class DesktopCards {
     }
 
     destroy() {
-        GLib.source_remove(this._timer);
+        if (this._timer) {
+            GLib.source_remove(this._timer);
+            this._timer = 0;
+        }
+        if (this._repositionIdleId) {
+            GLib.source_remove(this._repositionIdleId);
+            this._repositionIdleId = 0;
+        }
+        if (this._visibilityIdleId) {
+            GLib.source_remove(this._visibilityIdleId);
+            this._visibilityIdleId = 0;
+        }
+        this._clearFocusedWindowWatch();
+        for (const sig of this._displaySignals) {
+            try { global.display.disconnect(sig); } catch (_e) {}
+        }
+        this._displaySignals = [];
+        for (const sig of this._wmSignals) {
+            try { global.window_manager.disconnect(sig); } catch (_e) {}
+        }
+        this._wmSignals = [];
+        if (this._overviewShowSignal) {
+            Main.overview.disconnect(this._overviewShowSignal);
+            this._overviewShowSignal = 0;
+        }
+        if (this._overviewHideSignal) {
+            Main.overview.disconnect(this._overviewHideSignal);
+            this._overviewHideSignal = 0;
+        }
+        if (this._panelHeightSignal && Main.layoutManager.panelBox) {
+            try { Main.layoutManager.panelBox.disconnect(this._panelHeightSignal); } catch (_e) {}
+            this._panelHeightSignal = 0;
+        }
+        if (this._layoutSignal) {
+            Main.layoutManager.disconnect(this._layoutSignal);
+            this._layoutSignal = 0;
+        }
         this._weatherCancellation.cancel();
-        Main.layoutManager.disconnect(this._layoutSignal);
         this.actor.destroy();
     }
 }
@@ -340,31 +521,34 @@ const DOCK_LIFT_PX = 1;
 
 class DockMagnifier {
     constructor() {
-        this._dock = null;
-        this._dash = null;
-        this._savedClips = [];
-        this._savedOffscreen = null;
-        this._origSetClip = null;
-        this._reparentedBox = false;
+        this._docks = new Map();
         this._stageSignal = 0;
         this._overviewShowSignal = 0;
         this._overviewHideSignal = 0;
+        this._monitorsSignal = 0;
+        this._uiGroupAddedSignal = 0;
         this._attachTimeoutId = 0;
+        this._syncTimeoutIds = [];
         this._animTimeoutId = 0;
-        this._hoverActive = false;
-        this._pointerX = 0;
-        this._scales = new Map();
 
         this._overviewShowSignal = Main.overview.connect('showing', () => this._resetImmediate());
-        this._overviewHideSignal = Main.overview.connect('hidden', () => this._ensureAttached());
+        this._overviewHideSignal = Main.overview.connect('hidden', () => this._syncDocks());
+        this._monitorsSignal = Main.layoutManager.connect('monitors-changed', () => {
+            this._resetImmediate();
+            this._scheduleSync();
+        });
+        this._uiGroupAddedSignal = Main.layoutManager.uiGroup.connect('actor-added', (_group, actor) => {
+            if (actor && actor.name === 'dashtodockContainer')
+                this._scheduleSync();
+        });
 
-        this._ensureAttached();
-        if (!this._dock) {
+        this._syncDocks();
+        if (this._docks.size === 0) {
             let attempts = 0;
             this._attachTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
                 attempts++;
-                this._ensureAttached();
-                if (this._dock || attempts >= 20) {
+                this._syncDocks();
+                if (this._docks.size > 0 || attempts >= 20) {
                     this._attachTimeoutId = 0;
                     return GLib.SOURCE_REMOVE;
                 }
@@ -373,83 +557,53 @@ class DockMagnifier {
         }
     }
 
-    _findDock() {
+    _scheduleSync() {
+        this._syncDocks();
+        for (const delay of [250, 750]) {
+            const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
+                this._syncTimeoutIds = this._syncTimeoutIds.filter(t => t !== id);
+                this._syncDocks();
+                return GLib.SOURCE_REMOVE;
+            });
+            this._syncTimeoutIds.push(id);
+        }
+    }
+
+    _findAllDocks() {
+        const found = [];
         for (const child of Main.layoutManager.uiGroup.get_children()) {
-            if (child.name === 'dashtodockContainer' && child.dash)
-                return child;
+            if (child && child.name === 'dashtodockContainer' && child.dash)
+                found.push(child);
         }
-        return null;
+        return found;
     }
 
-    _clearSlideClip() {
-        if (this._dock && this._dock._box && this._dock._slider && this._dock._slider.slideX >= 0.99)
-            this._dock._box.remove_clip();
+    _clearSlideClip(state) {
+        try {
+            if (state.dock && state.dock._box && state.dock._slider && state.dock._slider.slideX >= 0.99)
+                state.dock._box.remove_clip();
+        } catch (_e) {}
     }
 
-    _ensureAttached() {
-        if (this._dock && this._dock.get_parent())
-            return;
-        const dock = this._findDock();
-        if (!dock)
-            return;
-
-        this._dock = dock;
-        this._dash = dock.dash;
-        this._dock.add_style_class_name('macos-dock');
-
-        this._savedOffscreen = this._dash.offscreen_redirect;
-        this._dash.offscreen_redirect = Clutter.OffscreenRedirect.NONE;
-
-        // St.ScrollView always clips its child viewport in C (st_scroll_view_paint),
-        // cutting off icons that pop above the top glass border. Move _box directly
-        // into _dashContainer while keeping _scrollView intact for clean teardown.
-        if (this._dash._scrollView && this._dash._box && this._dash._dashContainer &&
-            this._dash._box.get_parent() === this._dash._scrollView) {
-            const idx = this._dash._dashContainer.get_children().indexOf(this._dash._scrollView);
-            this._dash._scrollView.remove_actor(this._dash._box);
-            this._dash._dashContainer.insert_child_at_index(this._dash._box, idx >= 0 ? idx : 0);
-            this._dash._scrollView.hide();
-            this._reparentedBox = true;
-        }
-
-        const actorsToUnclip = [
-            this._dock,
-            this._dock._slider,
-            this._dock._box,
-            this._dash,
-            this._dash._dashContainer,
-            this._dash._scrollView,
-            this._dash._box,
-        ];
-        this._savedClips = [];
-        for (const actor of actorsToUnclip) {
-            if (actor) {
-                this._savedClips.push([actor, actor.clip_to_allocation]);
-                actor.clip_to_allocation = false;
-            }
-        }
-
-        // DashSlideContainer.vfunc_allocate calls this._box.set_clip() AFTER allocate(),
-        // which would re-clip icons popping above the top border on every relayout/tooltip.
-        // Intercept set_clip on _box so it never clips while the dock is fully shown.
-        if (this._dock._box && !this._origSetClip) {
-            const box = this._dock._box;
-            const slider = this._dock._slider;
-            this._origSetClip = box.set_clip;
-            box.set_clip = (...args) => {
-                if (slider && slider.slideX >= 0.99) {
-                    box.remove_clip();
-                    return;
+    _syncDocks() {
+        const liveDocks = new Set(this._findAllDocks());
+        for (const dock of Array.from(this._docks.keys())) {
+            let alive = liveDocks.has(dock);
+            if (alive) {
+                try {
+                    alive = !!dock.get_parent();
+                } catch (_e) {
+                    alive = false;
                 }
-                this._origSetClip.apply(box, args);
-            };
-            box.remove_clip();
+            }
+            if (!alive)
+                this._detachDock(dock, true);
         }
-
-        if (this._dash._background)
-            this._dash._background.set_pivot_point(0.5, 1.0);
-
-        if (!this._stageSignal) {
+        for (const dock of liveDocks) {
+            if (!this._docks.has(dock))
+                this._attachDock(dock);
+        }
+        if (this._docks.size > 0 && !this._stageSignal) {
             this._stageSignal = global.stage.connect('captured-event', (_stage, event) => {
                 this._onStageEvent(event);
                 return Clutter.EVENT_PROPAGATE;
@@ -457,20 +611,144 @@ class DockMagnifier {
         }
     }
 
-    _getAllDockChildren() {
-        if (!this._dash || !this._dash._box)
+    _attachDock(dock) {
+        const dash = dock.dash;
+        if (!dash)
+            return;
+
+        const state = {
+            dock,
+            dash,
+            savedClips: [],
+            savedOffscreen: null,
+            origSetClip: null,
+            origEnsureItemVisibility: null,
+            reparentedBox: false,
+            destroySignal: 0,
+            hoverActive: false,
+            pointerX: 0,
+            scales: new Map(),
+        };
+
+        dock.add_style_class_name('macos-dock');
+        state.savedOffscreen = dash.offscreen_redirect;
+        dash.offscreen_redirect = Clutter.OffscreenRedirect.NONE;
+
+        // St.ScrollView always clips its child viewport in C (st_scroll_view_paint),
+        // cutting off icons that pop above the top glass border. Move _box directly
+        // into _dashContainer while keeping _scrollView intact for clean teardown.
+        if (dash._scrollView && dash._box && dash._dashContainer &&
+            dash._box.get_parent() === dash._scrollView) {
+            const idx = dash._dashContainer.get_children().indexOf(dash._scrollView);
+            dash._scrollView.remove_actor(dash._box);
+            dash._dashContainer.insert_child_at_index(dash._box, idx >= 0 ? idx : 0);
+            dash._scrollView.hide();
+            state.reparentedBox = true;
+            if (typeof dash._ensureItemVisibility === 'function') {
+                state.origEnsureItemVisibility = dash._ensureItemVisibility;
+                dash._ensureItemVisibility = () => {};
+            }
+        }
+
+        const actorsToUnclip = [
+            dock,
+            dock._slider,
+            dock._box,
+            dash,
+            dash._dashContainer,
+            dash._scrollView,
+            dash._box,
+        ];
+        for (const actor of actorsToUnclip) {
+            if (actor) {
+                state.savedClips.push([actor, actor.clip_to_allocation]);
+                actor.clip_to_allocation = false;
+            }
+        }
+
+        // DashSlideContainer.vfunc_allocate calls this._box.set_clip() AFTER allocate(),
+        // which would re-clip icons popping above the top border on every relayout/tooltip.
+        // Intercept set_clip on _box so it never clips while the dock is fully shown.
+        if (dock._box) {
+            const box = dock._box;
+            const slider = dock._slider;
+            state.origSetClip = box.set_clip;
+            box.set_clip = (...args) => {
+                if (slider && slider.slideX >= 0.99) {
+                    box.remove_clip();
+                    return;
+                }
+                state.origSetClip.apply(box, args);
+            };
+            box.remove_clip();
+        }
+
+        if (dash._background)
+            dash._background.set_pivot_point(0.5, 1.0);
+
+        state.destroySignal = dock.connect('destroy', () => {
+            this._detachDock(dock, true);
+        });
+
+        this._docks.set(dock, state);
+    }
+
+    _detachDock(dock, alreadyDisposed) {
+        const state = this._docks.get(dock);
+        if (!state)
+            return;
+        this._docks.delete(dock);
+
+        if (!alreadyDisposed) {
+            this._resetStateImmediate(state);
+            if (state.destroySignal) {
+                try { dock.disconnect(state.destroySignal); } catch (_e) {}
+            }
+            if (state.origSetClip && dock._box) {
+                try { dock._box.set_clip = state.origSetClip; } catch (_e) {}
+            }
+            if (state.origEnsureItemVisibility && state.dash) {
+                try { state.dash._ensureItemVisibility = state.origEnsureItemVisibility; } catch (_e) {}
+            }
+            if (state.reparentedBox && state.dash && state.dash._box && state.dash._scrollView) {
+                try {
+                    if (state.dash._box.get_parent() === state.dash._dashContainer) {
+                        state.dash._dashContainer.remove_child(state.dash._box);
+                        state.dash._scrollView.add_actor(state.dash._box);
+                        state.dash._scrollView.show();
+                    }
+                } catch (_e) {}
+            }
+            if (state.dash && state.savedOffscreen !== null) {
+                try { state.dash.offscreen_redirect = state.savedOffscreen; } catch (_e) {}
+            }
+            for (const [actor, prevClip] of state.savedClips) {
+                try { actor.clip_to_allocation = prevClip; } catch (_e) {}
+            }
+            try { dock.remove_style_class_name('macos-dock'); } catch (_e) {}
+        }
+        state.scales.clear();
+    }
+
+    _getAllDockChildren(state) {
+        const dash = state.dash;
+        if (!dash || !dash._box)
             return [];
         const items = [];
-        for (const child of this._dash._box.get_children()) {
-            if (!child.visible)
-                continue;
-            const isIcon = !!(child.has_style_class_name && child.has_style_class_name('dash-item-container'));
-            const isSep = !!(child.has_style_class_name && child.has_style_class_name('dash-separator'));
-            if (isIcon || isSep)
-                items.push({ actor: child, isIcon });
+        try {
+            for (const child of dash._box.get_children()) {
+                if (!child.visible)
+                    continue;
+                const isIcon = !!(child.has_style_class_name && child.has_style_class_name('dash-item-container'));
+                const isSep = !!(child.has_style_class_name && child.has_style_class_name('dash-separator'));
+                if (isIcon || isSep)
+                    items.push({ actor: child, isIcon });
+            }
+            if (dash._showAppsIcon && dash._showAppsIcon.visible)
+                items.push({ actor: dash._showAppsIcon, isIcon: true });
+        } catch (_e) {
+            return [];
         }
-        if (this._dash._showAppsIcon && this._dash._showAppsIcon.visible)
-            items.push({ actor: this._dash._showAppsIcon, isIcon: true });
         return items;
     }
 
@@ -484,13 +762,13 @@ class DockMagnifier {
         return appBtn;
     }
 
-    _ensureHiResIcon(visual) {
+    _ensureHiResIcon(dash, visual) {
         const stIcon = visual && visual.child;
         if (!stIcon || !(stIcon instanceof St.Icon))
             return;
         if (stIcon._macosHiResApplied)
             return;
-        const baseSize = this._dash ? (this._dash.iconSize || 42) : 42;
+        const baseSize = dash ? (dash.iconSize || 42) : 42;
         const hiResSize = Math.round(baseSize * DOCK_MAX_SCALE);
         visual.set_size(baseSize, baseSize);
         stIcon.set_icon_size(hiResSize);
@@ -499,70 +777,95 @@ class DockMagnifier {
     }
 
     _onStageEvent(event) {
-        if (!this._dock || !this._dash || Main.overview.visible) {
-            if (this._hoverActive) {
-                this._hoverActive = false;
-                this._startAnim();
+        if (this._docks.size === 0 || Main.overview.visible) {
+            let needAnim = false;
+            for (const state of this._docks.values()) {
+                if (state.hoverActive) {
+                    state.hoverActive = false;
+                    needAnim = true;
+                }
             }
+            if (needAnim)
+                this._startAnim();
             return;
         }
         const type = event.type();
         if (type === Clutter.EventType.LEAVE) {
-            if (this._hoverActive) {
-                this._hoverActive = false;
-                this._startAnim();
+            let needAnim = false;
+            for (const state of this._docks.values()) {
+                if (state.hoverActive) {
+                    state.hoverActive = false;
+                    needAnim = true;
+                }
             }
+            if (needAnim)
+                this._startAnim();
             return;
         }
         if (type !== Clutter.EventType.MOTION && type !== Clutter.EventType.ENTER)
             return;
 
         const [px, py] = event.get_coords();
-        const bg = this._dash._background;
-        if (!bg || !bg.visible)
-            return;
+        let needAnim = false;
 
-        const [bx, by] = bg.get_transformed_position();
-        const [bw, bh] = bg.get_transformed_size();
-        if (bw <= 0 || bh <= 0)
-            return;
+        for (const [dock, state] of Array.from(this._docks.entries())) {
+            let bg;
+            try {
+                if (!dock.get_parent()) {
+                    this._detachDock(dock, true);
+                    continue;
+                }
+                bg = state.dash._background;
+                if (!bg || !bg.visible) {
+                    if (state.hoverActive) {
+                        state.hoverActive = false;
+                        needAnim = true;
+                    }
+                    continue;
+                }
+                const [bx, by] = bg.get_transformed_position();
+                const [bw, bh] = bg.get_transformed_size();
+                if (bw <= 0 || bh <= 0)
+                    continue;
 
-        const topPad = this._hoverActive ? 34 : 6;
-        const sidePad = this._hoverActive ? 20 : 6;
-        const inZone = px >= bx - sidePad && px <= bx + bw + sidePad &&
-                       py >= by - topPad && py <= by + bh + 10;
+                const topPad = state.hoverActive ? 34 : 6;
+                const sidePad = state.hoverActive ? 20 : 6;
+                const inZone = px >= bx - sidePad && px <= bx + bw + sidePad &&
+                               py >= by - topPad && py <= by + bh + 10;
 
-        if (inZone) {
-            this._hoverActive = true;
-            this._pointerX = px;
-            this._startAnim();
-        } else if (this._hoverActive) {
-            this._hoverActive = false;
-            this._startAnim();
+                if (inZone) {
+                    state.hoverActive = true;
+                    state.pointerX = px;
+                    needAnim = true;
+                } else if (state.hoverActive) {
+                    state.hoverActive = false;
+                    needAnim = true;
+                }
+            } catch (_e) {
+                this._detachDock(dock, true);
+            }
         }
+
+        if (needAnim)
+            this._startAnim();
     }
 
     _startAnim() {
         if (this._animTimeoutId)
             return;
-        this._clearSlideClip();
+        for (const state of this._docks.values())
+            this._clearSlideClip(state);
         this._animTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
             return this._stepAnim();
         });
     }
 
-    _stepAnim() {
-        if (!this._dock || !this._dash) {
-            this._animTimeoutId = 0;
-            return GLib.SOURCE_REMOVE;
-        }
-        this._clearSlideClip();
+    _stepStateAnim(state) {
+        this._clearSlideClip(state);
 
-        const entries = this._getAllDockChildren();
-        if (entries.length === 0) {
-            this._animTimeoutId = 0;
-            return GLib.SOURCE_REMOVE;
-        }
+        const entries = this._getAllDockChildren(state);
+        if (entries.length === 0)
+            return false;
 
         const targets = [];
         const widths = [];
@@ -575,8 +878,8 @@ class DockMagnifier {
             widths.push(iw);
 
             let target = 1.0;
-            if (this._hoverActive && entry.isIcon) {
-                const dist = Math.abs(this._pointerX - restCenterX);
+            if (state.hoverActive && entry.isIcon) {
+                const dist = Math.abs(state.pointerX - restCenterX);
                 if (dist < DOCK_SPREAD_RADIUS) {
                     const norm = dist / DOCK_SPREAD_RADIUS;
                     const cosine = (Math.cos(norm * Math.PI) + 1) * 0.5;
@@ -594,14 +897,14 @@ class DockMagnifier {
 
         for (let i = 0; i < entries.length; i++) {
             const actor = entries[i].actor;
-            const prev = this._scales.has(actor) ? this._scales.get(actor) : 1.0;
+            const prev = state.scales.has(actor) ? state.scales.get(actor) : 1.0;
             let next = prev + (targets[i] - prev) * DOCK_LERP_ALPHA;
             if (Math.abs(next - targets[i]) < 0.004)
                 next = targets[i];
             else
                 stillMoving = true;
 
-            this._scales.set(actor, next);
+            state.scales.set(actor, next);
             curScales.push(next);
             const extra = entries[i].isIcon ? widths[i] * (next - 1.0) * 0.45 : 0;
             extraWs.push(extra);
@@ -620,7 +923,7 @@ class DockMagnifier {
             actor.translation_x = tx;
             if (entry.isIcon) {
                 const visual = this._getIconVisual(actor);
-                this._ensureHiResIcon(visual);
+                this._ensureHiResIcon(state.dash, visual);
                 visual.set_pivot_point(0.5, 1.0);
                 visual.scale_x = scale;
                 visual.scale_y = scale;
@@ -628,29 +931,59 @@ class DockMagnifier {
             }
         }
 
-        if (!stillMoving && !this._hoverActive) {
+        return stillMoving || state.hoverActive;
+    }
+
+    _stepAnim() {
+        if (this._docks.size === 0) {
+            this._animTimeoutId = 0;
+            return GLib.SOURCE_REMOVE;
+        }
+
+        let anyActive = false;
+        for (const [dock, state] of Array.from(this._docks.entries())) {
+            try {
+                if (!dock.get_parent()) {
+                    this._detachDock(dock, true);
+                    continue;
+                }
+                if (this._stepStateAnim(state))
+                    anyActive = true;
+            } catch (_e) {
+                this._detachDock(dock, true);
+            }
+        }
+
+        if (!anyActive) {
             this._animTimeoutId = 0;
             return GLib.SOURCE_REMOVE;
         }
         return GLib.SOURCE_CONTINUE;
     }
 
+    _resetStateImmediate(state) {
+        state.hoverActive = false;
+        for (const entry of this._getAllDockChildren(state)) {
+            try {
+                entry.actor.translation_x = 0;
+                if (entry.isIcon) {
+                    const visual = this._getIconVisual(entry.actor);
+                    visual.scale_x = 1.0;
+                    visual.scale_y = 1.0;
+                    visual.translation_y = 0;
+                }
+            } catch (_e) {}
+        }
+        state.scales.clear();
+    }
+
     _resetImmediate() {
-        this._hoverActive = false;
         if (this._animTimeoutId) {
             GLib.source_remove(this._animTimeoutId);
             this._animTimeoutId = 0;
         }
-        for (const entry of this._getAllDockChildren()) {
-            entry.actor.translation_x = 0;
-            if (entry.isIcon) {
-                const visual = this._getIconVisual(entry.actor);
-                visual.scale_x = 1.0;
-                visual.scale_y = 1.0;
-                visual.translation_y = 0;
-            }
-        }
-        this._scales.clear();
+        for (const state of this._docks.values())
+            this._resetStateImmediate(state);
     }
 
     destroy() {
@@ -658,11 +991,11 @@ class DockMagnifier {
             GLib.source_remove(this._attachTimeoutId);
             this._attachTimeoutId = 0;
         }
-        this._resetImmediate();
-        if (this._origSetClip && this._dock && this._dock._box) {
-            try { this._dock._box.set_clip = this._origSetClip; } catch (_e) {}
-            this._origSetClip = null;
+        for (const id of this._syncTimeoutIds) {
+            try { GLib.source_remove(id); } catch (_e) {}
         }
+        this._syncTimeoutIds = [];
+        this._resetImmediate();
         if (this._stageSignal) {
             global.stage.disconnect(this._stageSignal);
             this._stageSignal = 0;
@@ -675,26 +1008,17 @@ class DockMagnifier {
             Main.overview.disconnect(this._overviewHideSignal);
             this._overviewHideSignal = 0;
         }
-        if (this._reparentedBox && this._dash && this._dash._box && this._dash._scrollView &&
-            this._dash._box.get_parent() === this._dash._dashContainer) {
-            try {
-                this._dash._dashContainer.remove_child(this._dash._box);
-                this._dash._scrollView.add_actor(this._dash._box);
-                this._dash._scrollView.show();
-            } catch (_e) {}
-            this._reparentedBox = false;
+        if (this._monitorsSignal) {
+            Main.layoutManager.disconnect(this._monitorsSignal);
+            this._monitorsSignal = 0;
         }
-        if (this._dash && this._savedOffscreen !== null)
-            this._dash.offscreen_redirect = this._savedOffscreen;
-        for (const [actor, prevClip] of this._savedClips) {
-            try { actor.clip_to_allocation = prevClip; } catch (_e) {}
+        if (this._uiGroupAddedSignal) {
+            Main.layoutManager.uiGroup.disconnect(this._uiGroupAddedSignal);
+            this._uiGroupAddedSignal = 0;
         }
-        this._savedClips = [];
-        if (this._dock) {
-            try { this._dock.remove_style_class_name('macos-dock'); } catch (_e) {}
-        }
-        this._dock = null;
-        this._dash = null;
+        for (const dock of Array.from(this._docks.keys()))
+            this._detachDock(dock, false);
+        this._docks.clear();
     }
 }
 
@@ -729,7 +1053,7 @@ class PanelIcons {
         }
 
         this._cards = new DesktopCards();
-        Main.layoutManager._backgroundGroup.add_child(this._cards.actor);
+        this._cards.attach();
 
         this._dockMagnifier = new DockMagnifier();
     }
