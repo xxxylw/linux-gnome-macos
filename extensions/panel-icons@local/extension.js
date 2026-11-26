@@ -76,6 +76,13 @@ class DesktopCards {
         this.actor = new St.BoxLayout({ vertical: true, style_class: 'desktop-cards' });
         this.actor.add_child(row);
         this.actor.add_child(photo);
+        this._cachedW = 364;
+        this._cachedH = 292;
+        this._lastX = null;
+        this._lastY = null;
+        this._cardsVisible = true;
+        this._calendar = calendar;
+        this._weather = weather;
         this._weatherCancellation = new Gio.Cancellable();
         this._repositionIdleId = 0;
         this._visibilityIdleId = 0;
@@ -187,27 +194,44 @@ class DesktopCards {
                 baseY = wa.y;
             }
         } catch (_e) {}
-        const [, , natW, natH] = this.actor.get_preferred_size();
-        const w = Math.max(Math.round(natW || this.actor.width || 0), 364);
-        const h = Math.max(Math.round(natH || this.actor.height || 0), 292);
         return {
             x: baseX + 22,
             y: baseY + 18,
-            w,
-            h,
+            w: this._cachedW,
+            h: this._cachedH,
         };
+    }
+
+    _setCardsVisible(visible) {
+        if (this._cardsVisible === visible)
+            return;
+        this._cardsVisible = visible;
+        // Toggle opacity + reactivity instead of show()/hide() to avoid queueing
+        // relayouts on MetaWindowGroup during window/overview animations.
+        this.actor.opacity = visible ? 255 : 0;
+        this._calendar.reactive = visible;
+        this._weather.reactive = visible;
     }
 
     _reposition() {
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor) {
-            this.actor.hide();
+            this._setCardsVisible(false);
             return;
         }
+        try {
+            const [, , natW, natH] = this.actor.get_preferred_size();
+            this._cachedW = Math.max(Math.round(natW || 0), 364);
+            this._cachedH = Math.max(Math.round(natH || 0), 292);
+        } catch (_e) {}
         const bounds = this._getCardBounds(monitor);
-        this.actor.set_position(bounds.x, bounds.y);
+        if (this._lastX !== bounds.x || this._lastY !== bounds.y) {
+            this._lastX = bounds.x;
+            this._lastY = bounds.y;
+            this.actor.set_position(bounds.x, bounds.y);
+        }
         const parent = this.actor.get_parent();
-        if (parent)
+        if (parent && parent.get_last_child() !== this.actor)
             parent.set_child_above_sibling(this.actor, null);
         this._updateVisibility();
     }
@@ -215,12 +239,12 @@ class DesktopCards {
     _updateVisibility() {
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor || Main.overview.visible) {
-            this.actor.hide();
+            this._setCardsVisible(false);
             return;
         }
         const bounds = this._getCardBounds(monitor);
         if (bounds.w + 44 > monitor.width || bounds.h + 64 > monitor.height) {
-            this.actor.hide();
+            this._setCardsVisible(false);
             return;
         }
 
@@ -250,10 +274,7 @@ class DesktopCards {
             }
         }
 
-        if (obscured)
-            this.actor.hide();
-        else
-            this.actor.show();
+        this._setCardsVisible(!obscured);
     }
 
     _setCalendar() {
@@ -1115,18 +1136,9 @@ class DockWorkareaGuard {
             if (win)
                 this._scheduleClamp(win, true);
         });
-        this._mapSignal = global.window_manager.connect('map', (_wm, actor) => {
-            if (actor && actor.meta_window)
-                this._scheduleClamp(actor.meta_window, false);
-        });
-        this._unminimizeSignal = global.window_manager.connect('unminimize', (_wm, actor) => {
-            if (actor && actor.meta_window)
-                this._scheduleClamp(actor.meta_window, false);
-        });
         this._monitorsSignal = Main.layoutManager.connect('monitors-changed', () => {
             this._scheduleClampAll();
         });
-        this._scheduleClampAll();
     }
 
     _scheduleClamp(win, force) {
@@ -1237,14 +1249,6 @@ class DockWorkareaGuard {
         if (this._grabEndSignal) {
             global.display.disconnect(this._grabEndSignal);
             this._grabEndSignal = 0;
-        }
-        if (this._mapSignal) {
-            global.window_manager.disconnect(this._mapSignal);
-            this._mapSignal = 0;
-        }
-        if (this._unminimizeSignal) {
-            global.window_manager.disconnect(this._unminimizeSignal);
-            this._unminimizeSignal = 0;
         }
         if (this._monitorsSignal) {
             Main.layoutManager.disconnect(this._monitorsSignal);
