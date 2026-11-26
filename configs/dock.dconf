@@ -1,13 +1,12 @@
 # macOS-style floating compact Dock settings for Ubuntu Dock / Dash to Dock
 # Load with: dconf load /org/gnome/shell/extensions/dash-to-dock/ < configs/dock.dconf
 [/]
-autohide=true
+autohide=false
 background-opacity=0.42
 custom-theme-shrink=true
 dash-max-icon-size=42
-dock-fixed=false
+dock-fixed=true
 dock-position='BOTTOM'
 extend-height=false
-intellihide=true
-intellihide-mode='ALL_WINDOWS'
+intellihide=false
 transparency-mode='FIXED'

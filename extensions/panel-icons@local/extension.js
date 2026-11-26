@@ -1023,6 +1023,152 @@ class DockMagnifier {
     }
 }
 
+class DockWorkareaGuard {
+    constructor() {
+        this._clamping = false;
+        this._pendingIdleIds = [];
+        this._grabEndSignal = global.display.connect('grab-op-end', (_display, arg1, arg2) => {
+            const win = arg1 instanceof Meta.Window ? arg1 : (arg2 instanceof Meta.Window ? arg2 : null);
+            if (win)
+                this._scheduleClamp(win);
+        });
+        this._mapSignal = global.window_manager.connect('map', (_wm, actor) => {
+            if (actor && actor.meta_window)
+                this._scheduleClamp(actor.meta_window);
+        });
+        this._sizeChangedSignal = global.window_manager.connect('size-changed', (_wm, actor) => {
+            if (actor && actor.meta_window)
+                this._scheduleClamp(actor.meta_window);
+        });
+        this._monitorsSignal = Main.layoutManager.connect('monitors-changed', () => {
+            this._scheduleClampAll();
+        });
+        this._scheduleClampAll();
+    }
+
+    _scheduleClamp(win) {
+        const id = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._pendingIdleIds = this._pendingIdleIds.filter(t => t !== id);
+            this._clampWindow(win);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._pendingIdleIds.push(id);
+    }
+
+    _scheduleClampAll() {
+        const id = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._pendingIdleIds = this._pendingIdleIds.filter(t => t !== id);
+            const workspace = global.workspace_manager.get_active_workspace();
+            const windows = workspace ? workspace.list_windows() : [];
+            for (const win of windows)
+                this._clampWindow(win);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._pendingIdleIds.push(id);
+    }
+
+    _getMonitorMaxBottom(monitor, workArea) {
+        let maxBottom = workArea.y + workArea.height;
+        let hasBottomDock = (monitor.y + monitor.height) - maxBottom > 0;
+
+        for (const child of Main.layoutManager.uiGroup.get_children()) {
+            if (!child || child.name !== 'dashtodockContainer' || !child.visible || !child.dash)
+                continue;
+            const bg = child.dash._background;
+            if (!bg || !bg.visible)
+                continue;
+            try {
+                const [bx, by] = bg.get_transformed_position();
+                const [bw, bh] = bg.get_transformed_size();
+                if (bw <= 0 || bh <= 0)
+                    continue;
+                const cx = bx + bw * 0.5;
+                const cy = by + bh * 0.5;
+                if (cx >= monitor.x && cx < monitor.x + monitor.width &&
+                    cy >= monitor.y && cy < monitor.y + monitor.height &&
+                    by > monitor.y + monitor.height * 0.5) {
+                    hasBottomDock = true;
+                    maxBottom = Math.min(maxBottom, Math.floor(by) - 4);
+                }
+            } catch (_e) {}
+        }
+
+        return hasBottomDock ? maxBottom : null;
+    }
+
+    _clampWindow(win) {
+        if (this._clamping)
+            return;
+        if (!win)
+            return;
+        try {
+            if (win.minimized || win.is_fullscreen() || win.is_override_redirect())
+                return;
+            if (win.window_type !== Meta.WindowType.NORMAL)
+                return;
+            if (win.get_maximized() === Meta.MaximizeFlags.BOTH)
+                return;
+
+            const monIdx = win.get_monitor();
+            if (monIdx < 0 || monIdx >= Main.layoutManager.monitors.length)
+                return;
+            const monitor = Main.layoutManager.monitors[monIdx];
+            const workspace = win.get_workspace() || global.workspace_manager.get_active_workspace();
+            if (!workspace)
+                return;
+            const workArea = workspace.get_work_area_for_monitor(monIdx);
+            if (!workArea || workArea.height <= 0)
+                return;
+
+            const maxBottom = this._getMonitorMaxBottom(monitor, workArea);
+            if (maxBottom === null)
+                return;
+
+            const rect = win.get_frame_rect();
+            if (!rect || rect.width <= 0 || rect.height <= 0)
+                return;
+
+            if (rect.y + rect.height <= maxBottom)
+                return;
+
+            const allowedHeight = Math.max(120, maxBottom - workArea.y);
+            this._clamping = true;
+            if (rect.height > allowedHeight) {
+                win.move_resize_frame(true, rect.x, workArea.y, rect.width, allowedHeight);
+            } else {
+                const newY = Math.max(workArea.y, maxBottom - rect.height);
+                win.move_frame(true, rect.x, newY);
+            }
+        } catch (_e) {
+        } finally {
+            this._clamping = false;
+        }
+    }
+
+    destroy() {
+        for (const id of this._pendingIdleIds) {
+            try { GLib.source_remove(id); } catch (_e) {}
+        }
+        this._pendingIdleIds = [];
+        if (this._grabEndSignal) {
+            global.display.disconnect(this._grabEndSignal);
+            this._grabEndSignal = 0;
+        }
+        if (this._mapSignal) {
+            global.window_manager.disconnect(this._mapSignal);
+            this._mapSignal = 0;
+        }
+        if (this._sizeChangedSignal) {
+            global.window_manager.disconnect(this._sizeChangedSignal);
+            this._sizeChangedSignal = 0;
+        }
+        if (this._monitorsSignal) {
+            Main.layoutManager.disconnect(this._monitorsSignal);
+            this._monitorsSignal = 0;
+        }
+    }
+}
+
 class PanelIcons {
     enable() {
         const { activities, appMenu } = Main.panel.statusArea;
@@ -1057,9 +1203,12 @@ class PanelIcons {
         this._cards.attach();
 
         this._dockMagnifier = new DockMagnifier();
+        this._dockWorkareaGuard = new DockWorkareaGuard();
     }
 
     disable() {
+        if (this._dockWorkareaGuard)
+            this._dockWorkareaGuard.destroy();
         if (this._dockMagnifier)
             this._dockMagnifier.destroy();
         if (this._cards)
@@ -1076,6 +1225,7 @@ class PanelIcons {
             this._appLabel.visible = this._appLabelWasVisible;
         if (this._appMenu)
             this._appMenu.container.visible = this._appMenuWasVisible;
+        this._dockWorkareaGuard = null;
         this._dockMagnifier = null;
         this._cards = null;
         this._quickButtons = null;
